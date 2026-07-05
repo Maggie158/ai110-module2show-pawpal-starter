@@ -65,8 +65,21 @@ Two smaller changes along the way:
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+My conflict detection makes a deliberate simplicity tradeoff: it only flags
+tasks that share the **exact same preferred time**, not tasks whose *durations*
+overlap. For example, a 30-minute walk at 08:00 and a feeding at 08:15 actually
+collide in real life, but my `detect_conflicts()` won't warn about them because
+their start times differ — it would only warn if both were set to 08:15.
+
+This is reasonable for the scenario because a pet owner mostly sets round
+"preferred times" (08:00, 09:00), so exact-match catches the common case, and
+the logic stays tiny and easy to read (group tasks by time, warn on any group
+with more than one task). It also can't crash — it returns a list of warning
+strings, empty when there are no clashes. The scheduler still prevents *actual*
+overlaps within a pet's lane by placing tasks back to back, so the un-detected
+duration overlaps get pushed later rather than double-booked. If I had more
+time, I'd upgrade the check to compare `[start, start + duration]` windows so it
+catches overlapping durations too.
 
 ---
 
