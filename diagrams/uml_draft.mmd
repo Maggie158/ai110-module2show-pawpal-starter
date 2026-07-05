@@ -1,0 +1,51 @@
+classDiagram
+    %% PawPal+ system design (draft — revisit in Phase 6)
+    %% Four-class model: Owner manages Pets, each Pet has Tasks, and the
+    %% Scheduler is the "brain" that retrieves and organizes tasks across pets.
+    %% Multi-pet: each pet is its own lane. Tasks within a pet don't overlap,
+    %% but different pets run in parallel (a walk for Mochi and a walk for
+    %% Biscuit can share the same time slot).
+
+    class Task {
+        +str description
+        +int duration_minutes
+        +str priority
+        +str frequency
+        +int weekday
+        +int preferred_time
+        +bool done
+        +mark_complete() void
+        +priority_rank() int
+        +occurs_on(weekday) bool
+    }
+
+    class Pet {
+        +str name
+        +str species
+        +str breed
+        +List~Task~ tasks
+        +add_task(task) Task
+        +remove_task(task) void
+        +list_tasks() List~Task~
+    }
+
+    class Owner {
+        +str name
+        +int available_minutes
+        +int day_start
+        +List~Pet~ pets
+        +add_pet(name, species) Pet
+        +list_pets() List~Pet~
+        +all_tasks() List~Task~
+    }
+
+    class Scheduler {
+        +build_plan(owner, weekday) Dict
+        -_plan_for_pet(pet, owner, weekday) tuple
+        -_sort_by_priority(tasks) List~Task~
+        -_explain(task, start) str
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Scheduler ..> Owner : reads tasks across pets

@@ -2,15 +2,57 @@
 
 ## 1. System Design
 
+**Core user actions**
+
+PawPal+ is built around three things a user should be able to do:
+
+1. **Add a pet** — register a pet with basic info (name, species) so tasks have something to belong to.
+2. **Add a care task** — attach a task like a walk, feeding, medication, or appointment to a pet, with a duration and priority.
+3. **See today's tasks** — generate a daily plan that orders and prioritizes the tasks the user has added.
+
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+My final design uses four classes, each with a clear responsibility:
+
+- **Task** — a single care activity (description, duration, priority,
+  frequency, completion status). Responsible for knowing its priority rank,
+  whether it occurs on a given day, and marking itself complete.
+- **Pet** — a single pet (name, species, breed) and the care tasks that belong
+  to it. Responsible for holding and managing its own tasks (add/remove/list).
+- **Owner** — the app user. Holds their name, daily time budget
+  (`available_minutes`), and day start time, and owns a list of pets.
+  Responsible for registering pets and exposing every task across all pets
+  (`all_tasks()`).
+- **Scheduler** — the "brain." Its one public method `build_plan` retrieves and
+  organizes an owner's tasks into a daily schedule, one pet at a time. Each pet
+  is its own lane (tasks placed back to back, no overlap), and pets run in
+  parallel. Sorting and explanation are private helpers.
+
+The relationships are simple: an Owner owns many Pets, a Pet has many Tasks, and
+the Scheduler reads across all pets via `Owner.all_tasks()` — which keeps the
+Scheduler decoupled from how the Owner stores its pets.
 
 **b. Design changes**
 
-- Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+My design changed significantly. I first brainstormed a richer **six-class
+calendar model** (User, Pet, Task, Event, Calendar, Scheduler) where the
+scheduler produced a first-draft plan and the user could freely drag events
+around, with a `locked` flag protecting manual edits.
+
+I then moved to the **four-class model above** for two reasons: the project's
+design instructions specify four classes (Task, Pet, Owner, Scheduler), and the
+simpler model is easier to build and test for this scope. Collapsing Event and
+Calendar into the scheduler's output (a plain plan dictionary) removed a lot of
+complexity while still supporting priority sorting, budget filtering, and
+per-pet parallel lanes.
+
+Two smaller changes along the way:
+
+- I kept the **parallel-lane** multi-pet rule from the six-class design (each
+  pet scheduled independently), which let me drop the overlap/conflict helper
+  methods entirely.
+- I renamed `Task.mark_done()` to `mark_complete()` so the public API matches
+  the behavior tests and reads more clearly.
 
 ---
 

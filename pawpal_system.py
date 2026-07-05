@@ -70,7 +70,7 @@ class Task:
         if self.frequency not in VALID_FREQUENCIES:
             raise ValueError(f"frequency must be one of {sorted(VALID_FREQUENCIES)}.")
 
-    def mark_done(self) -> None:
+    def mark_complete(self) -> None:
         """Mark this task complete."""
         self.done = True
 
