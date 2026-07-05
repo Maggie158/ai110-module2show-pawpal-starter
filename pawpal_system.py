@@ -77,6 +77,28 @@ class Task:
         """Mark this task complete."""
         self.done = True
 
+    def update(self, **changes) -> "Task":
+        """Edit fields in place with validation; rolls back if the change is invalid.
+
+        Lets the UI change an existing task (time, priority, duration, etc.) without
+        rebuilding it. Re-runs __post_init__ so an edit can't leave the task invalid
+        (empty description, non-positive duration, bad priority/frequency); on failure
+        the previous values are restored and ValueError is re-raised.
+        """
+        snapshot = {}
+        for key, value in changes.items():
+            if not hasattr(self, key):
+                raise AttributeError(f"Task has no field '{key}'.")
+            snapshot[key] = getattr(self, key)
+            setattr(self, key, value)
+        try:
+            self.__post_init__()
+        except ValueError:
+            for key, value in snapshot.items():
+                setattr(self, key, value)
+            raise
+        return self
+
     def next_occurrence(self) -> Optional["Task"]:
         """Return a fresh Task for this task's next due date, or None.
 
@@ -156,6 +178,19 @@ class Pet:
             self.tasks.append(next_task)
         return next_task
 
+    def update(self, name: Optional[str] = None, species: Optional[str] = None,
+               breed: Optional[str] = None) -> "Pet":
+        """Edit this pet's details in place; only the fields you pass are changed."""
+        if name is not None:
+            if not name.strip():
+                raise ValueError("Pet name cannot be empty.")
+            self.name = name.strip()
+        if species is not None:
+            self.species = species
+        if breed is not None:
+            self.breed = breed
+        return self
+
     def list_tasks(self) -> List[Task]:
         """Return this pet's tasks."""
         return list(self.tasks)
@@ -185,6 +220,11 @@ class Owner:
         pet = Pet(name=name.strip(), species=species, breed=breed)
         self.pets.append(pet)
         return pet
+
+    def remove_pet(self, pet: Pet) -> None:
+        """Remove a pet (and, with it, all of its tasks). No error if already gone."""
+        if pet in self.pets:
+            self.pets.remove(pet)
 
     def list_pets(self) -> List[Pet]:
         """Return this owner's pets."""

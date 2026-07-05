@@ -6,10 +6,21 @@ Scheduler classes, and the Owner instance is kept alive across reruns using
 st.session_state.
 """
 
+from datetime import time
+
 import streamlit as st
 
 # Step 1: bring the logic-layer classes into the UI.
 from pawpal_system import Owner, Task, Scheduler, minutes_to_clock
+
+PRIORITIES = ["high", "medium", "low"]
+FREQUENCIES = ["daily", "weekly", "once"]
+SPECIES = ["dog", "cat", "other"]
+
+
+def minutes_to_time(minutes):
+    """Turn minutes-from-midnight into a datetime.time for st.time_input."""
+    return time(hour=(minutes // 60) % 24, minute=minutes % 60)
 
 st.set_page_config(page_title="PawPal+", page_icon="🐾", layout="centered")
 
@@ -66,10 +77,35 @@ with st.form("add_pet_form", clear_on_submit=True):
         else:
             st.error("Please enter a pet name.")
 
-if owner.pets:
-    st.write("Your pets:", ", ".join(f"{p.name} ({p.species})" for p in owner.pets))
-else:
+if not owner.pets:
     st.info("No pets yet. Add one above to get started.")
+else:
+    st.caption("Edit a pet's details or remove it — then regenerate for an updated plan.")
+    for i, pet in enumerate(owner.pets):
+        with st.expander(f"🐾 {pet.name} ({pet.species})"):
+            # Edit form: change name / species / breed on the stored Pet in place.
+            with st.form(f"edit_pet_{i}", clear_on_submit=False):
+                e1, e2, e3 = st.columns(3)
+                with e1:
+                    new_name = st.text_input("Name", value=pet.name, key=f"pname_{i}")
+                with e2:
+                    species_idx = SPECIES.index(pet.species) if pet.species in SPECIES else 0
+                    new_species = st.selectbox("Species", SPECIES, index=species_idx,
+                                               key=f"pspec_{i}")
+                with e3:
+                    new_breed = st.text_input("Breed", value=pet.breed, key=f"pbreed_{i}")
+                if st.form_submit_button("Save changes"):
+                    try:
+                        pet.update(name=new_name, species=new_species, breed=new_breed)
+                        st.success(f"Updated {pet.name}.")
+                        st.rerun()
+                    except ValueError as err:
+                        st.error(str(err))
+
+            # Delete removes the pet and all of its tasks (cascade).
+            if st.button(f"🗑️ Delete {pet.name}", key=f"pdel_{i}"):
+                owner.remove_pet(pet)
+                st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +116,10 @@ st.subheader("2. Add a care task")
 if not owner.pets:
     st.caption("Add a pet first, then you can give it tasks.")
 else:
+    # Checkbox lives OUTSIDE the form so toggling it reruns immediately and can
+    # enable/disable the time field. Widgets inside a form don't rerun until submit.
+    use_pref = st.checkbox("Set a preferred time")
+
     with st.form("add_task_form", clear_on_submit=True):
         pet_by_name = {p.name: p for p in owner.pets}
         target_name = st.selectbox("For which pet?", list(pet_by_name.keys()))
@@ -92,7 +132,6 @@ else:
             priority = st.selectbox("Priority", ["high", "medium", "low"], index=1)
             frequency = st.selectbox("Frequency", ["daily", "weekly", "once"])
 
-        use_pref = st.checkbox("Set a preferred time")
         pref_time = st.time_input("Preferred time", disabled=not use_pref)
 
         if st.form_submit_button("Add task"):
@@ -109,22 +148,68 @@ else:
             pet_by_name[target_name].add_task(task)
             st.success(f"Added '{description}' to {target_name}.")
 
-    # Show the current tasks per pet so the user sees what's stored.
-    for pet in owner.pets:
-        if pet.tasks:
-            st.markdown(f"**{pet.name}'s tasks**")
-            st.table([
-                {
-                    "task": t.description,
-                    "duration": t.duration_minutes,
-                    "priority": t.priority,
-                    "frequency": t.frequency,
-                    "preferred": minutes_to_clock(t.preferred_time)
-                    if t.preferred_time is not None else "—",
-                    "done": "✅" if t.done else "",
-                }
-                for t in pet.tasks
-            ])
+    # Show the current tasks per pet, each editable / removable in place.
+    for pi, pet in enumerate(owner.pets):
+        if not pet.tasks:
+            continue
+        st.markdown(f"**{pet.name}'s tasks**")
+        for ti, task in enumerate(pet.tasks):
+            key = f"{pi}_{ti}"
+            status = "✅ " if task.done else ""
+            pref_label = (minutes_to_clock(task.preferred_time)
+                          if task.preferred_time is not None else "no set time")
+            with st.expander(
+                f"{status}{task.description} · {task.priority} · {pref_label}"
+            ):
+                has_pref = task.preferred_time is not None
+                # Checkbox outside the form so it can toggle the time field live.
+                e_use_pref = st.checkbox("Set a preferred time", value=has_pref,
+                                         key=f"tusep_{key}")
+                with st.form(f"edit_task_{key}", clear_on_submit=False):
+                    t1, t2 = st.columns(2)
+                    with t1:
+                        e_desc = st.text_input("Task", value=task.description,
+                                               key=f"tdesc_{key}")
+                        e_dur = st.number_input("Duration (min)", 1, 240,
+                                                task.duration_minutes, key=f"tdur_{key}")
+                    with t2:
+                        e_pri = st.selectbox("Priority", PRIORITIES,
+                                             index=PRIORITIES.index(task.priority),
+                                             key=f"tpri_{key}")
+                        e_freq = st.selectbox("Frequency", FREQUENCIES,
+                                              index=FREQUENCIES.index(task.frequency),
+                                              key=f"tfreq_{key}")
+                    e_pref = st.time_input(
+                        "Preferred time",
+                        value=minutes_to_time(task.preferred_time) if has_pref else time(9, 0),
+                        disabled=not e_use_pref, key=f"tpref_{key}",
+                    )
+                    if st.form_submit_button("Save changes"):
+                        pref_minutes = (e_pref.hour * 60 + e_pref.minute
+                                        if e_use_pref else None)
+                        try:
+                            task.update(
+                                description=e_desc,
+                                duration_minutes=int(e_dur),
+                                priority=e_pri,
+                                frequency=e_freq,
+                                preferred_time=pref_minutes,
+                            )
+                            st.success("Task updated.")
+                            st.rerun()
+                        except ValueError as err:
+                            st.error(str(err))
+
+                b1, b2 = st.columns(2)
+                with b1:
+                    if st.button("🗑️ Delete task", key=f"tdel_{key}"):
+                        pet.remove_task(task)
+                        st.rerun()
+                with b2:
+                    if not task.done and st.button("✓ Mark complete", key=f"tdone_{key}"):
+                        # Recurring tasks auto-spawn their next occurrence here.
+                        pet.complete_task(task)
+                        st.rerun()
 
 
 # ---------------------------------------------------------------------------

@@ -123,24 +123,48 @@ honored where possible, and the two 09:00 tasks trigger a **conflict warning**.
 
 ```bash
 # Run the full test suite:
-pytest
-
-# Run with coverage:
-pytest --cov
+python -m pytest
 ```
+
+The suite (22 tests in `tests/test_pawpal.py`) covers:
+
+- **Sorting** — `sort_by_time()` returns tasks in chronological order and pushes
+  tasks with no preferred time to the end of the day.
+- **Recurrence** — completing a *daily* task spawns the next day, a *weekly* task
+  the next week (+7 days), and a *once* task spawns nothing.
+- **Conflict detection** — two tasks at the exact same preferred time warn; tasks
+  at different times, completed tasks, and untimed tasks do not.
+- **Scheduling / packing** — tasks within a pet lane never overlap, higher
+  priority is placed first, and a task larger than the daily budget is skipped.
+- **Edge cases** — empty owner, a pet with no tasks, and all-done pets plan
+  cleanly without crashing.
+- **Validation & CRUD** — invalid Task input is rejected; `Task.update()` /
+  `Pet.update()` / `Owner.remove_pet()` edit and delete safely.
 
 Sample test output:
 
 ```
-tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [ 16%]
-tests/test_pawpal.py::test_adding_task_increases_pet_task_count PASSED   [ 33%]
-tests/test_pawpal.py::test_completing_daily_task_spawns_next_day PASSED  [ 50%]
-tests/test_pawpal.py::test_once_task_does_not_recur PASSED               [ 66%]
-tests/test_pawpal.py::test_detect_conflicts_flags_same_time_tasks PASSED [ 83%]
-tests/test_pawpal.py::test_no_conflict_when_times_differ PASSED          [100%]
+============================= test session starts ==============================
+collected 22 items
 
-============================== 6 passed in 0.01s ===============================
+tests/test_pawpal.py::test_mark_complete_changes_status PASSED           [  4%]
+tests/test_pawpal.py::test_adding_task_increases_pet_task_count PASSED   [  9%]
+tests/test_pawpal.py::test_completing_daily_task_spawns_next_day PASSED  [ 13%]
+tests/test_pawpal.py::test_once_task_does_not_recur PASSED               [ 18%]
+tests/test_pawpal.py::test_sort_by_time_returns_chronological_order PASSED [ 54%]
+tests/test_pawpal.py::test_tasks_in_a_pet_lane_never_overlap PASSED      [ 72%]
+tests/test_pawpal.py::test_task_longer_than_budget_is_skipped PASSED     [ 81%]
+tests/test_pawpal.py::test_completing_weekly_task_spawns_next_week PASSED [ 90%]
+tests/test_pawpal.py::test_weekly_task_only_scheduled_on_its_weekday PASSED [ 95%]
+tests/test_pawpal.py::test_task_rejects_invalid_input PASSED             [100%]
+
+============================== 22 passed in 0.03s ==============================
 ```
+
+**Confidence level: ★★★★☆ (4/5)** — every core behavior (sorting, recurrence,
+conflict detection, budget-aware packing) and the main edge cases are covered and
+green. Held back from 5/5 because the tests exercise the logic layer only; the
+Streamlit UI wiring in `app.py` is verified manually, not automatically.
 
 ## 📐 Smarter Scheduling
 
