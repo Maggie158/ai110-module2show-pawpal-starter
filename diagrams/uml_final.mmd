@@ -1,0 +1,61 @@
+classDiagram
+    %% PawPal+ system design (final — matches pawpal_system.py).
+    %% Four-class model: Owner manages Pets, each Pet has Tasks, and the
+    %% Scheduler is the "brain" that reads tasks across pets and plans them.
+    %% Multi-pet: each pet is its own lane. Tasks within a pet don't overlap,
+    %% but different pets run in parallel (a walk for Mochi and a walk for
+    %% Biscuit can share the same time slot).
+
+    class Task {
+        +str description
+        +int duration_minutes
+        +str priority
+        +str frequency
+        +int weekday
+        +int preferred_time
+        +date due_date
+        +bool done
+        +mark_complete() void
+        +update(**changes) Task
+        +next_occurrence() Task
+        +priority_rank() int
+        +occurs_on(weekday) bool
+    }
+
+    class Pet {
+        +str name
+        +str species
+        +str breed
+        +List~Task~ tasks
+        +add_task(task) Task
+        +remove_task(task) void
+        +complete_task(task) Task
+        +update(name, species, breed) Pet
+        +list_tasks() List~Task~
+    }
+
+    class Owner {
+        +str name
+        +int available_minutes
+        +int day_start
+        +List~Pet~ pets
+        +add_pet(name, species, breed) Pet
+        +remove_pet(pet) void
+        +list_pets() List~Pet~
+        +all_tasks() List~Task~
+        +filter_tasks(pet_name, status) List~Task~
+    }
+
+    class Scheduler {
+        +build_plan(owner, weekday) Dict
+        +detect_conflicts(owner, weekday) List~str~
+        +sort_by_time(tasks) List~Task~
+        -_plan_for_pet(pet, owner, weekday) tuple
+        -_sort_by_priority(tasks) List~Task~
+        -_explain(task, start) str
+    }
+
+    Owner "1" --> "*" Pet : owns
+    Pet "1" --> "*" Task : has
+    Pet ..> Task : creates next occurrence
+    Scheduler ..> Owner : reads tasks across pets

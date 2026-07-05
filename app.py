@@ -217,28 +217,61 @@ else:
 # ---------------------------------------------------------------------------
 st.subheader("3. Today's schedule")
 
+scheduler = Scheduler()
+
+# Conflict warnings surface as soon as two tasks share a time — shown live (before
+# and after generating) so the owner can fix a clash they can't physically be in
+# two places for.
+conflicts = scheduler.detect_conflicts(owner)
+if conflicts:
+    st.warning("**⚠️ Scheduling conflicts detected:**\n\n"
+               + "\n".join(f"- {c}" for c in conflicts))
+
 if st.button("Generate schedule", type="primary", disabled=not owner.all_tasks()):
-    plan = Scheduler().build_plan(owner)
+    st.session_state.plan = scheduler.build_plan(owner)
 
-    if not plan["scheduled"]:
+plan = st.session_state.get("plan")
+if plan is not None:
+    scheduled = plan["scheduled"]
+
+    if not scheduled:
         st.warning("Nothing to schedule yet — add some tasks above.")
+    else:
+        if not plan["skipped"] and not conflicts:
+            st.success(f"Planned {len(scheduled)} task(s) with no conflicts. 🎉")
 
-    for pet in owner.pets:
-        items = [s for s in plan["scheduled"] if s["pet"] == pet.name]
-        if not items:
-            continue
-        st.markdown(f"### 🐾 {pet.name}")
-        for s in items:
-            st.markdown(
-                f"**{s['clock']}** — {s['description']} "
-                f"({s['duration']} min) · _{s['priority']}_"
-            )
-            st.caption(f"↳ {s['reason']}")
+        # Professional agenda: every pet's tasks merged and sorted chronologically.
+        agenda = sorted(scheduled, key=lambda s: s["start"])
+        st.table([
+            {
+                "Time": s["clock"],
+                "Pet": s["pet"],
+                "Task": s["description"],
+                "Duration": f"{s['duration']} min",
+                "Priority": s["priority"],
+            }
+            for s in agenda
+        ])
+
+        # Per-pet detail, including the scheduler's reasoning for each placement.
+        for pet in owner.pets:
+            items = [s for s in scheduled if s["pet"] == pet.name]
+            if not items:
+                continue
+            st.markdown(f"### 🐾 {pet.name}")
+            for s in items:
+                st.markdown(
+                    f"**{s['clock']}** — {s['description']} "
+                    f"({s['duration']} min) · _{s['priority']}_"
+                )
+                st.caption(f"↳ {s['reason']}")
 
     if plan["skipped"]:
         st.markdown("#### ⚠️ Skipped (ran out of time)")
         for s in plan["skipped"]:
             st.caption(f"- {s['pet']}: {s['description']} — {s['reason']}")
+
+    st.caption("Edited something above? Click **Generate schedule** again to refresh this plan.")
 
 if not owner.all_tasks():
     st.caption("Add at least one task to enable scheduling.")

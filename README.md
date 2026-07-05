@@ -166,6 +166,44 @@ conflict detection, budget-aware packing) and the main edge cases are covered an
 green. Held back from 5/5 because the tests exercise the logic layer only; the
 Streamlit UI wiring in `app.py` is verified manually, not automatically.
 
+## ✨ Features
+
+- **Manage pets and tasks (full CRUD)** — add, edit, and delete pets and care
+  tasks from the browser; changes persist in-session, so you edit and re-plan
+  without ever refreshing the page. (`Owner.add_pet` / `remove_pet`,
+  `Pet.add_task` / `remove_task` / `update`, `Task.update`)
+- **Priority-aware daily plan** — each pet gets its own back-to-back lane, ordered
+  high → medium → low priority, respecting a per-pet time budget.
+  (`Scheduler.build_plan`)
+- **Sort by time** — view any pet's tasks in chronological order, with untimed
+  tasks pushed to the end of the day. (`Scheduler.sort_by_time`)
+- **Filter by pet or status** — list tasks for one pet, or only the done / pending
+  ones. (`Owner.filter_tasks`)
+- **Conflict warnings** — flags when two tasks are set for the exact same time so
+  the owner can't be double-booked, shown as a live Streamlit warning banner.
+  (`Scheduler.detect_conflicts`)
+- **Recurring tasks** — completing a *daily* task auto-creates tomorrow's, a
+  *weekly* task next week's (+7 days), and a *once* task nothing.
+  (`Pet.complete_task` → `Task.next_occurrence`, using `timedelta`)
+- **Explained placements** — every scheduled item carries a short reason ("High
+  priority, placed early", "moved to 09:05 to avoid overlap"). (`Scheduler._explain`)
+
+## 🏗️ Architecture (UML)
+
+Four classes model the system: an **Owner** manages **Pets**, each **Pet** owns
+**Tasks**, and the **Scheduler** is the "brain" that reads tasks across pets and
+builds the daily plan. Completing a recurring Task makes its Pet create the next
+occurrence.
+
+![PawPal+ class diagram](diagrams/uml_final.png)
+
+Source: [`diagrams/uml_final.mmd`](diagrams/uml_final.mmd) (Mermaid). Regenerate the
+PNG with:
+
+```bash
+npx -y @mermaid-js/mermaid-cli -i diagrams/uml_final.mmd -o diagrams/uml_final.png
+```
+
 ## 📐 Smarter Scheduling
 
 | Feature | Method(s) | Notes |
@@ -175,14 +213,112 @@ Streamlit UI wiring in `app.py` is verified manually, not automatically.
 | Conflict handling | `Scheduler.detect_conflicts()`, `Scheduler._plan_for_pet()` | Warns on tasks sharing an exact preferred time; within a pet, tasks are placed back to back so they never overlap |
 | Recurring tasks | `Pet.complete_task()`, `Task.next_occurrence()` | Completing a daily/weekly task auto-creates the next occurrence via `timedelta` (once = no repeat) |
 
-## 📸 Demo Walkthrough
+## 🎬 Demo Walkthrough
 
-Describe your app in numbered steps so a reader can follow along without watching a video:
+### What you can do in the app
 
-1. <!-- Describe this step -->
-2. <!-- Describe this step -->
-3. <!-- Describe this step -->
-4. <!-- Describe this step -->
-5. <!-- Add more steps as needed -->
+Run it with `streamlit run app.py`. The page has four areas:
 
-**Screenshot or video** *(optional)*: <!-- Insert a screenshot or link to a demo video here -->
+- **Owner settings (sidebar)** — set the owner name, the daily time budget per
+  pet, and when the care day starts.
+- **1. Add a pet** — register a pet (name, species, breed). Each pet then appears
+  in an expander where you can **edit** its details or **delete** it.
+- **2. Add a care task** — attach a task to a pet (description, duration, priority,
+  frequency, optional preferred time). Every task is editable and deletable in
+  place, and can be marked complete.
+- **3. Today's schedule** — click **Generate schedule** to build the plan; a live
+  banner warns about time conflicts, an agenda table shows the sorted plan, and
+  each pet's section explains why every task landed where it did.
+
+### Example workflow
+
+1. In the sidebar, set the budget to `120` min and day start to `07:00`.
+2. Add two pets: **Mochi** (dog) and **Biscuit** (cat).
+3. Give Mochi a `high`-priority "Breakfast" at 07:00 and a `low` "Enrichment
+   puzzle" at 14:00; give Biscuit a "Feed" at 08:00. Add "Vitamins" to Mochi and
+   "Heart meds" to Biscuit **both at 09:00** (a deliberate clash).
+4. Click **Generate schedule**.
+5. See a ⚠️ **conflict warning** for 09:00, an agenda **table** sorted by time,
+   and each pet's lane packed with no overlaps — the low-priority puzzle is pushed
+   later to make room, with a reason shown.
+6. Edit or delete anything, click **Generate schedule** again — the plan updates
+   without a page refresh.
+
+### Key Scheduler behaviors shown
+
+- **Sorting** — tasks entered out of order are shown earliest-first.
+- **Priority packing** — high-priority tasks are placed first; nothing overlaps
+  within a pet's lane.
+- **Conflict detection** — same-time tasks raise a warning instead of crashing.
+- **Recurrence** — completing a daily/weekly task spawns its next occurrence.
+
+### Sample CLI output (`python main.py`)
+
+```
+====================================================
+  Today's Schedule for Jordan
+  Time budget: 120 min/pet, day starts 07:00
+====================================================
+
+🐾 Mochi (dog)
+   07:00  Breakfast            (10 min) [high]
+          ↳ High priority, placed early; honored preferred 07:00.
+   09:00  Vitamins             (5 min) [high]
+          ↳ High priority, placed early; honored preferred 09:00.
+   18:00  Evening walk         (30 min) [medium]
+          ↳ Medium priority; honored preferred 18:00.
+   18:30  Enrichment puzzle    (20 min) [low]
+          ↳ Low priority, filled in after the rest; wanted 14:00, moved to 18:30 to avoid overlap.
+
+🐾 Biscuit (cat)
+   09:00  Heart meds           (5 min) [high]
+          ↳ High priority, placed early; honored preferred 09:00.
+   09:05  Feed                 (10 min) [medium]
+          ↳ Medium priority; wanted 08:00, moved to 09:05 to avoid overlap.
+
+----------------------------------------------------
+  Sorting demo: Mochi's tasks (added out of order)
+----------------------------------------------------
+  As entered:
+     18:00  Evening walk
+     07:00  Breakfast
+     14:00  Enrichment puzzle
+     09:00  Vitamins
+  Sorted by time:
+     07:00  Breakfast
+     09:00  Vitamins
+     14:00  Enrichment puzzle
+     18:00  Evening walk
+
+----------------------------------------------------
+  Conflict detection demo
+----------------------------------------------------
+   ⚠️  Conflict at 09:00: Mochi's 'Vitamins', Biscuit's 'Heart meds' are all set for the same time.
+
+----------------------------------------------------
+  Recurring demo: completing a daily task
+----------------------------------------------------
+  Completing 'Breakfast' (frequency: daily)...
+     Breakfast done: True
+     Auto-created next occurrence 'Breakfast' due 2026-07-06 (today + 1 day)
+
+----------------------------------------------------
+  Filtering demo
+----------------------------------------------------
+  Pending tasks (not done):
+     [ ] Evening walk
+     [ ] Enrichment puzzle
+     [ ] Vitamins
+     [ ] Breakfast
+     [ ] Heart meds
+     [ ] Feed
+  Completed tasks:
+     [x] Breakfast
+  Only Biscuit's tasks:
+     Heart meds
+     Feed
+
+====================================================
+```
+
+*Optional: add screenshots of the Streamlit UI here for human reviewers.*
